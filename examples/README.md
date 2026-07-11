@@ -52,3 +52,16 @@ The `bench --mock` numbers are fixed constants from `MockRunner`, not
 measured — they exist to exercise the CLI's output format without needing a
 real llama.cpp binary. See `README.md`'s Limitations section for what a real
 benchmark run requires.
+
+## Animated version
+
+`wow_demo.py` walks through the same scan → compat → bench sequence above,
+styled with [rich](https://github.com/Textualize/rich) (panels, spinners, a
+progress bar) for recording a terminal GIF. All the numbers it prints are
+the real output of speculect's library functions against the same fixture
+files — the animation is cosmetic, the data isn't.
+
+```bash
+pip install -e ".[demo]"
+python examples/wow_demo.py
+```

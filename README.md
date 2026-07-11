@@ -25,7 +25,9 @@ python3 -m venv .venv
 PATH=".venv/bin:$PATH" ./examples/demo.sh
 ```
 
-Real captured output: [examples/README.md](examples/README.md).
+Real captured output: [examples/README.md](examples/README.md). Want the
+same thing dressed up for a terminal recording? `pip install -e ".[demo]"`
+then `python examples/wow_demo.py` — same real data, animated.
 
 ## The problem
 
