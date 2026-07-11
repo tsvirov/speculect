@@ -48,6 +48,12 @@ _SCALAR_STRUCT_FORMATS = {
 
 TOKEN_HASH_SAMPLE_SIZE = 256
 
+# Guards against corrupt/malicious headers: a bogus length field could
+# otherwise trigger an uncaught MemoryError (huge string) or RecursionError
+# (deeply nested arrays) instead of a clean GGUFParseError.
+MAX_STRING_LENGTH = 64 * 1024 * 1024  # 64 MiB — generous for any real metadata string
+MAX_ARRAY_NESTING_DEPTH = 32
+
 
 class GGUFParseError(Exception):
     """Raised when a file is not a valid, parseable GGUF header."""
@@ -83,17 +89,27 @@ def _read_u64(f: BinaryIO) -> int:
 
 def _read_string(f: BinaryIO) -> str:
     length = _read_u64(f)
+    if length > MAX_STRING_LENGTH:
+        raise GGUFParseError(
+            f"string length {length} exceeds max allowed {MAX_STRING_LENGTH} "
+            "(likely a corrupt or malicious header)"
+        )
     raw = _read_exact(f, length)
     return raw.decode("utf-8", errors="replace")
 
 
-def _read_value(f: BinaryIO, value_type: int) -> GGUFValue:
+def _read_value(f: BinaryIO, value_type: int, _depth: int = 0) -> GGUFValue:
+    if _depth > MAX_ARRAY_NESTING_DEPTH:
+        raise GGUFParseError(
+            f"array nesting exceeds max depth {MAX_ARRAY_NESTING_DEPTH} "
+            "(likely a corrupt or malicious header)"
+        )
     if value_type == _TYPE_STRING:
         return _read_string(f)
     if value_type == _TYPE_ARRAY:
         elem_type = _read_u32(f)
         length = _read_u64(f)
-        return [_read_value(f, elem_type) for _ in range(length)]
+        return [_read_value(f, elem_type, _depth + 1) for _ in range(length)]
     if value_type in _SCALAR_STRUCT_FORMATS:
         fmt, size = _SCALAR_STRUCT_FORMATS[value_type]
         return struct.unpack(fmt, _read_exact(f, size))[0]
@@ -196,6 +212,7 @@ def scan_directory(directory: str) -> ScanResult:
             continue
         path = os.path.join(directory, name)
         if not os.path.isfile(path):
+            skipped.append(SkippedFile(path=path, reason="not a regular file"))
             continue
         try:
             header = parse_file(path)

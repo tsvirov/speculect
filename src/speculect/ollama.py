@@ -62,13 +62,20 @@ class OllamaClient:
                 f"cannot reach Ollama at {self.base_url}: {exc}"
             ) from exc
 
+    @staticmethod
+    def _json(resp: httpx.Response, context: str) -> Any:
+        try:
+            return resp.json()
+        except ValueError as exc:
+            raise OllamaError(f"Ollama returned invalid JSON for {context}: {exc}") from exc
+
     def list_models(self) -> list[OllamaModel]:
         resp = self._get("/api/tags")
         if resp.status_code != 200:
             raise OllamaError(
                 f"Ollama returned HTTP {resp.status_code} for GET /api/tags"
             )
-        data = resp.json()
+        data = self._json(resp, "GET /api/tags")
         models = []
         for entry in data.get("models", []):
             details = entry.get("details") or {}
@@ -98,4 +105,4 @@ class OllamaClient:
             raise OllamaError(
                 f"Ollama returned HTTP {resp.status_code} for POST /api/show ({name})"
             )
-        return resp.json()
+        return self._json(resp, f"POST /api/show ({name})")

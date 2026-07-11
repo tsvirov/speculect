@@ -89,10 +89,15 @@ class LlamaCppRunner:
             proc = subprocess.run(
                 cmd, capture_output=True, text=True, check=False, timeout=300
             )
-        except OSError as exc:
+        except (OSError, subprocess.TimeoutExpired) as exc:
             raise BenchRunnerError(
                 f"failed to run {self._binary}: {exc}. install llama.cpp, see README"
             ) from exc
+        if proc.returncode != 0:
+            raise BenchRunnerError(
+                f"{self._binary} exited with code {proc.returncode}: "
+                f"{proc.stderr.strip() or '(no stderr output)'}"
+            )
         return self.parse_output(proc.stdout + "\n" + proc.stderr)
 
     @staticmethod

@@ -79,3 +79,29 @@ def test_llamacpp_runner_falls_back_to_second_binary_name(monkeypatch):
     monkeypatch.setattr("shutil.which", fake_which)
     runner = LlamaCppRunner()
     assert runner._binary == "/usr/local/bin/llama-server"
+
+
+def test_llamacpp_runner_timeout_raises_bench_error(monkeypatch):
+    import subprocess
+
+    def fake_run(cmd, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=cmd, timeout=300)
+
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/local/bin/llama-speculative")
+    monkeypatch.setattr("subprocess.run", fake_run)
+    runner = LlamaCppRunner()
+    with pytest.raises(BenchRunnerError, match="failed to run"):
+        runner.run("target.gguf", "draft.gguf", ["hello"])
+
+
+def test_llamacpp_runner_nonzero_exit_raises_bench_error(monkeypatch):
+    import subprocess
+
+    def fake_run(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, returncode=1, stdout="", stderr="segfault")
+
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/local/bin/llama-speculative")
+    monkeypatch.setattr("subprocess.run", fake_run)
+    runner = LlamaCppRunner()
+    with pytest.raises(BenchRunnerError, match="exited with code 1"):
+        runner.run("target.gguf", "draft.gguf", ["hello"])

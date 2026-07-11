@@ -12,13 +12,16 @@ have pulled in Ollama, no manual trial-and-error.
 
 ## Try it in 60 seconds
 
-No Ollama, no llama.cpp, no network — runs entirely against fixture GGUF
-files built by the same byte-builder the test suite uses.
+The demo below uses local fixture GGUF files instead of Ollama, so you can
+try it with zero setup — no Ollama, no llama.cpp, no network. (The
+Ollama-integrated mode described below is what you'd use day to day.)
 
 ```bash
 git clone https://github.com/tsvirov/speculect.git
 cd speculect
-python3 -m venv .venv && .venv/bin/pip install -e .
+python3 -m venv .venv
+.venv/bin/pip install -U pip
+.venv/bin/pip install -e .
 PATH=".venv/bin:$PATH" ./examples/demo.sh
 ```
 
@@ -120,9 +123,12 @@ speculect --version
     one built-in prompt if omitted.
 - `speculect --version` — print the installed version.
 
-Exit codes: `0` success, `1` no compatible draft candidates found, `2`
-infrastructure error (Ollama unreachable and no `--gguf-dir` given, or no
-llama.cpp binary found for a non-mock `bench`).
+Exit codes: `0` success. `1` — `pair` found no compatible draft (covers three
+cases: the `--target` model wasn't found, there were no other models to
+compare against, or none of the candidates were `COMPATIBLE`). `2` —
+infrastructure error: Ollama unreachable and no `--gguf-dir` given, or (for
+`bench`) no llama.cpp binary found, it exited non-zero, or its output
+couldn't be parsed.
 
 ## Comparison
 
@@ -141,6 +147,10 @@ already have on disk, is actually compatible with your target, and why.
 - `UNKNOWN` verdicts on models with sparse metadata are a deliberate design
   choice in favor of honesty over a confident-looking wrong guess — not a
   bug to be silenced.
+- `bench` does not check compatibility itself — it will happily benchmark
+  (or `--mock` benchmark) any `--target`/`--draft` pair you give it, real or
+  not. Run `pair` first to know whether a pair actually makes sense.
+- `--gguf-dir` scans only the top-level directory, not subdirectories.
 
 ## Roadmap (not yet implemented)
 

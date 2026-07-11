@@ -119,3 +119,37 @@ def test_client_context_manager_closes():
         client.list_models()
     # closing twice must not raise
     client.close()
+
+
+def test_list_models_invalid_json_raises_ollama_error():
+    def handler(request):
+        return httpx.Response(
+            200, content=b"not json{{{", headers={"content-type": "application/json"}
+        )
+
+    client = _client(handler)
+    with pytest.raises(OllamaError, match="invalid JSON"):
+        client.list_models()
+
+
+def test_show_model_invalid_json_raises_ollama_error():
+    def handler(request):
+        return httpx.Response(
+            200, content=b"not json{{{", headers={"content-type": "application/json"}
+        )
+
+    client = _client(handler)
+    with pytest.raises(OllamaError, match="invalid JSON"):
+        client.show_model("anything")
+
+
+def test_list_models_entry_missing_details_key():
+    def handler(request):
+        return httpx.Response(200, json={"models": [{"name": "bare:latest", "size": 123}]})
+
+    client = _client(handler)
+    models = client.list_models()
+    assert len(models) == 1
+    assert models[0].name == "bare:latest"
+    assert models[0].family is None
+    assert models[0].families == []

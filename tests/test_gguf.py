@@ -1,4 +1,5 @@
 import io
+import struct
 
 import pytest
 from conftest import gguf_string, string_array
@@ -182,3 +183,59 @@ def test_array_of_arrays_not_needed_but_scalar_types_all_readable(gguf_builder):
     header = parse_header(io.BytesIO(data))
     assert header.architecture == "llama"
     assert len(header.metadata_keys) == 12
+
+
+def _malformed_bytes(kv_bytes, kv_count=1):
+    """Hand-build a GGUF header with exactly `kv_bytes` as the metadata section body."""
+    buf = io.BytesIO()
+    buf.write(b"GGUF")
+    buf.write(struct.pack("<I", 3))
+    buf.write(struct.pack("<Q", 0))
+    buf.write(struct.pack("<Q", kv_count))
+    buf.write(kv_bytes)
+    return buf.getvalue()
+
+
+def test_huge_declared_string_length_raises_parse_error_not_memory_error():
+    key = b"s"
+    kv = struct.pack("<Q", len(key)) + key
+    kv += struct.pack("<I", 8)  # STRING type
+    kv += struct.pack("<Q", 2**40)  # huge declared length, no data follows
+    with pytest.raises(GGUFParseError, match="exceeds max"):
+        parse_header(io.BytesIO(_malformed_bytes(kv)))
+
+
+def test_deeply_nested_arrays_raise_parse_error_not_recursion_error():
+    key = b"nested"
+    kv = struct.pack("<Q", len(key)) + key
+    kv += struct.pack("<I", 9)  # outer value_type = ARRAY
+    wrap_count = 40  # comfortably past MAX_ARRAY_NESTING_DEPTH
+    for _ in range(wrap_count):
+        kv += struct.pack("<I", 9)  # elem_type = ARRAY
+        kv += struct.pack("<Q", 1)  # one nested element
+    kv += struct.pack("<I", 0)  # innermost elem_type = UINT8
+    kv += struct.pack("<Q", 1)
+    kv += struct.pack("<B", 42)
+    with pytest.raises(GGUFParseError, match="nesting exceeds max depth"):
+        parse_header(io.BytesIO(_malformed_bytes(kv)))
+
+
+def test_scan_directory_reports_non_regular_file_not_silently(tmp_path):
+    (tmp_path / "dir.gguf").mkdir()
+    result = scan_directory(str(tmp_path))
+    assert result.files == []
+    assert len(result.skipped) == 1
+    assert result.skipped[0].reason == "not a regular file"
+
+
+def test_non_string_array_metadata_does_not_crash(gguf_builder):
+    from speculect.gguf import _TYPE_ARRAY, _TYPE_INT32
+
+    metadata = {
+        "general.architecture": gguf_string("llama"),
+        "some.int.array": (_TYPE_ARRAY, (_TYPE_INT32, [1, 2, 3])),
+    }
+    data = gguf_builder(metadata=metadata)
+    header = parse_header(io.BytesIO(data))
+    assert header.architecture == "llama"
+    assert "some.int.array" in header.metadata_keys
