@@ -63,5 +63,8 @@ files — the animation is cosmetic, the data isn't.
 
 ```bash
 pip install -e ".[demo]"
-python examples/wow_demo.py
+python examples/wow_demo.py               # animated, live in your terminal
+python examples/wow_demo.py --svg out.svg  # static snapshot (no animation) —
+                                            # this is what's embedded at the
+                                            # top of README.md
 ```

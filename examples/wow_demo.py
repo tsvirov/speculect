@@ -7,8 +7,10 @@ files examples/demo.sh and the test suite use) — nothing is fabricated, only
 the pacing and colors are for show. Requires `rich`:
 
     pip install -e ".[demo]"
-    python examples/wow_demo.py
+    python examples/wow_demo.py               # animated, live in your terminal
+    python examples/wow_demo.py --svg out.svg  # static snapshot, no animation
 """
+import argparse
 import sys
 import time
 from pathlib import Path
@@ -62,9 +64,13 @@ def print_intro() -> None:
     beat(0.6)
 
 
-def scan_and_show() -> list:
-    with console.status("[bold cyan]scanning examples/fixtures for GGUF models...", spinner="dots"):
-        beat(1.2)
+def scan_and_show(animate: bool) -> list:
+    if animate:
+        msg = "[bold cyan]scanning examples/fixtures for GGUF models..."
+        with console.status(msg, spinner="dots"):
+            beat(1.2)
+            result = scan_directory(str(FIXTURES_DIR))
+    else:
         result = scan_directory(str(FIXTURES_DIR))
 
     table = Table(title="models found", border_style="grey50")
@@ -83,15 +89,17 @@ def scan_and_show() -> list:
             f"{m.parameter_count:,}" if m.parameter_count else "?",
         )
     console.print(table)
-    beat(0.8)
+    if animate:
+        beat(0.8)
     return models
 
 
-def check_candidates(models: list) -> None:
+def check_candidates(models: list, animate: bool) -> None:
     target = next(m for m in models if m.name == TARGET_NAME)
     console.print()
     console.print(f"[bold]target:[/bold] {TARGET_NAME}")
-    beat(0.4)
+    if animate:
+        beat(0.4)
 
     verdict_style = {
         Verdict.COMPATIBLE: ("green", "COMPATIBLE"),
@@ -100,9 +108,10 @@ def check_candidates(models: list) -> None:
     }
 
     for candidate in (m for m in models if m.name != TARGET_NAME):
-        status_msg = f"[cyan]checking {candidate.name} against {TARGET_NAME}..."
-        with console.status(status_msg, spinner="dots"):
-            beat(0.9)
+        if animate:
+            status_msg = f"[cyan]checking {candidate.name} against {TARGET_NAME}..."
+            with console.status(status_msg, spinner="dots"):
+                beat(0.9)
         result = check_compat(target, candidate)
         color, label = verdict_style[result.verdict]
         body = (
@@ -110,22 +119,24 @@ def check_candidates(models: list) -> None:
             f"[dim]{result.reason}[/dim]"
         )
         console.print(Panel(body, border_style=color))
-        beat(0.3)
+        if animate:
+            beat(0.3)
 
 
-def run_bench() -> None:
+def run_bench(animate: bool) -> None:
     console.print()
     console.print(f"[bold]benchmarking[/bold] {TARGET_NAME} + {DRAFT_NAME} [dim](--mock)[/dim]")
-    with Progress(
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        console=console,
-        transient=True,
-    ) as progress:
-        task = progress.add_task("running speculative decode...", total=100)
-        while not progress.finished:
-            progress.update(task, advance=4)
-            time.sleep(0.03)
+    if animate:
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            console=console,
+            transient=True,
+        ) as progress:
+            task = progress.add_task("running speculative decode...", total=100)
+            while not progress.finished:
+                progress.update(task, advance=4)
+                time.sleep(0.03)
 
     result = MockRunner().run(
         TARGET_NAME, DRAFT_NAME, ["Explain speculative decoding in one sentence."]
@@ -143,15 +154,29 @@ def run_bench() -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--svg", metavar="PATH", help="skip animation, export a static SVG snapshot to PATH"
+    )
+    args = parser.parse_args()
+    animate = args.svg is None
+
+    global console
+    if args.svg:
+        console = Console(record=True, width=100)
+
     print_intro()
-    models = scan_and_show()
-    check_candidates(models)
-    run_bench()
+    models = scan_and_show(animate)
+    check_candidates(models, animate)
+    run_bench(animate)
     console.print()
     console.print(
         "[bold green]done[/bold green] — real speedup needs a real llama.cpp binary. "
         "[dim]See README.[/dim]"
     )
+
+    if args.svg:
+        console.save_svg(args.svg, title="speculect")
 
 
 if __name__ == "__main__":
